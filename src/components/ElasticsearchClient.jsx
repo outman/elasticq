@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import Editor, { loader } from '@monaco-editor/react'
 import { Settings, Plug, Unplug, Play, Loader2, Database, AlertCircle } from 'lucide-react'
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
@@ -344,133 +345,157 @@ export default function ElasticsearchClient() {
         </div>
       )}
 
-      {/* Editors Section */}
-      <div className="flex-1 overflow-hidden">
-        {/* DSL Query Editor */}
-        <div className="h-full flex flex-col">
-          <div className="flex items-center justify-between px-2 h-10 bg-muted relative z-10 shrink-0">
-            <div className="flex items-center gap-2">
-              <Database className="h-4 w-4" />
-              <span className="text-sm font-medium">DSL Query</span>
-              {/* Index Selector */}
-              {isConnected && (
-                <select
-                  value={indexName}
-                  onChange={(e) => setIndexName(e.target.value)}
-                  className="ml-2 h-7 px-2 text-sm rounded border border-input bg-background"
-                >
-                  <option value="*">All Indices (*)</option>
-                  {availableIndices.map((index) => (
-                    <option key={index} value={index}>
-                      {index}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {/* Mapping Status */}
-              {isConnected && indexName !== '*' && (
-                <div className="flex items-center gap-1 ml-2 text-xs text-muted-foreground">
-                  {isMappingLoading ? (
-                    <>
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      <span>Loading mapping...</span>
-                    </>
-                  ) : Object.keys(currentFields).length > 0 ? (
-                    <>
-                      <span className="w-2 h-2 rounded-full bg-green-500" />
-                      <span>{Object.keys(currentFields).length} fields loaded</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="w-2 h-2 rounded-full bg-yellow-500" />
-                      <span>No mapping data</span>
-                    </>
-                  )}
-                </div>
+      {/* DSL Query Toolbar */}
+      <div className="flex items-center justify-between px-3 h-10 bg-muted border-b shrink-0">
+        <div className="flex items-center gap-2">
+          <Database className="h-4 w-4" />
+          <span className="text-sm font-medium">DSL Query</span>
+          {/* Index Selector */}
+          {isConnected && (
+            <select
+              value={indexName}
+              onChange={(e) => setIndexName(e.target.value)}
+              className="ml-2 h-7 px-2 text-sm rounded border border-input bg-background"
+            >
+              <option value="*">All Indices (*)</option>
+              {availableIndices.map((index) => (
+                <option key={index} value={index}>
+                  {index}
+                </option>
+              ))}
+            </select>
+          )}
+          {/* Mapping Status */}
+          {isConnected && indexName !== '*' && (
+            <div className="flex items-center gap-1 ml-2 text-xs text-muted-foreground">
+              {isMappingLoading ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>Loading mapping...</span>
+                </>
+              ) : Object.keys(currentFields).length > 0 ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-green-500" />
+                  <span>{Object.keys(currentFields).length} fields loaded</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                  <span>No mapping data</span>
+                </>
               )}
             </div>
-            <Button
-              size="icon"
-              variant="default"
-              onClick={handleExecuteQuery}
-              disabled={!isConnected || isExecuting}
-              title="Execute Query"
-              className="h-8 w-8"
-            >
-              {isExecuting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Play className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          </div>
-          <div className="flex-1">
-            <Editor
-              height="100%"
-              defaultLanguage="json"
-              value={dslQuery}
-              onChange={(value) => setDslQuery(value || '')}
-              theme="vs-dark"
-              beforeMount={(monaco) => {
-                // 注册 completion provider
-                if (!completionProviderRef.current) {
-                  completionProviderRef.current = new ESCompletionProvider()
-                  monaco.languages.registerCompletionItemProvider('json', {
-                    provideCompletionItems: (model, position, context, token) => {
-                      return completionProviderRef.current.provideCompletionItems(
-                        model, position, context, token
-                      )
-                    },
-                    triggerCharacters: ['"', ':', '{', '[', ' ', '.'],
-                  })
-                }
-
-                // 注册 hover provider
-                if (!hoverProviderRef.current) {
-                  hoverProviderRef.current = new ESHoverProvider()
-                  monaco.languages.registerHoverProvider('json', {
-                    provideHover: (model, position, token) => {
-                      return hoverProviderRef.current.provideHover(model, position, token)
-                    },
-                  })
-                }
-
-                // 创建 diagnostics provider
-                if (!diagnosticsProviderRef.current) {
-                  diagnosticsProviderRef.current = new ESDiagnosticsProvider()
-                }
-
-                monacoRef.current = monaco
-              }}
-              onMount={(editor, monaco) => {
-                editorModelRef.current = editor.getModel()
-
-                // 初始化时验证一次
-                if (diagnosticsProviderRef.current && indexName !== '*') {
-                  diagnosticsProviderRef.current.validate(editor.getModel(), indexName, currentFields)
-                }
-              }}
-              options={{
-                minimap: { enabled: false },
-                fontSize: 14,
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                tabSize: 2,
-                quickSuggestions: true,
-                suggestOnTriggerCharacters: true,
-                parameterHints: { enabled: true },
-                wordBasedSuggestions: false,
-                // 性能优化
-                scrollbar: {
-                  vertical: 'auto',
-                  horizontal: 'auto',
-                },
-              }}
-            />
-          </div>
+          )}
         </div>
+        <Button
+          size="icon"
+          variant="default"
+          onClick={handleExecuteQuery}
+          disabled={!isConnected || isExecuting}
+          title="Execute Query"
+          className="h-8 w-8"
+        >
+          {isExecuting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Play className="h-3.5 w-3.5" />
+          )}
+        </Button>
       </div>
+
+      {/* Editors Section - Split Panel */}
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
+        {/* Request Editor Panel */}
+        <ResizablePanel defaultSize={50} minSize={20}>
+          <Editor
+            height="100%"
+            defaultLanguage="json"
+            value={dslQuery}
+            onChange={(value) => setDslQuery(value || '')}
+            theme="vs-dark"
+            beforeMount={(monaco) => {
+              // 注册 completion provider
+              if (!completionProviderRef.current) {
+                completionProviderRef.current = new ESCompletionProvider()
+                monaco.languages.registerCompletionItemProvider('json', {
+                  provideCompletionItems: (model, position, context, token) => {
+                    return completionProviderRef.current.provideCompletionItems(
+                      model, position, context, token
+                    )
+                  },
+                  triggerCharacters: ['"', ':', '{', '[', ' ', '.'],
+                })
+              }
+
+              // 注册 hover provider
+              if (!hoverProviderRef.current) {
+                hoverProviderRef.current = new ESHoverProvider()
+                monaco.languages.registerHoverProvider('json', {
+                  provideHover: (model, position, token) => {
+                    return hoverProviderRef.current.provideHover(model, position, token)
+                  },
+                })
+              }
+
+              // 创建 diagnostics provider
+              if (!diagnosticsProviderRef.current) {
+                diagnosticsProviderRef.current = new ESDiagnosticsProvider()
+              }
+
+              monacoRef.current = monaco
+            }}
+            onMount={(editor, monaco) => {
+              editorModelRef.current = editor.getModel()
+
+              // 初始化时验证一次
+              if (diagnosticsProviderRef.current && indexName !== '*') {
+                diagnosticsProviderRef.current.validate(editor.getModel(), indexName, currentFields)
+              }
+            }}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 14,
+              lineNumbers: 'on',
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              tabSize: 2,
+              quickSuggestions: true,
+              suggestOnTriggerCharacters: true,
+              parameterHints: { enabled: true },
+              wordBasedSuggestions: false,
+              scrollbar: {
+                vertical: 'auto',
+                horizontal: 'auto',
+              },
+            }}
+          />
+        </ResizablePanel>
+
+        <ResizableHandle withHandle />
+
+        {/* Response Editor Panel */}
+        <ResizablePanel defaultSize={50} minSize={20}>
+          <Editor
+            height="100%"
+            defaultLanguage="json"
+            value={queryResult}
+            theme="vs-dark"
+            options={{
+              readOnly: true,
+              minimap: { enabled: false },
+              fontSize: 14,
+              lineNumbers: 'on',
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              tabSize: 2,
+              scrollbar: {
+                vertical: 'auto',
+                horizontal: 'auto',
+              },
+            }}
+          />
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   )
 }
